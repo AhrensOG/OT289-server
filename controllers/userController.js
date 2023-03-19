@@ -1,12 +1,14 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken')
 const JWT_SECRET = process.env.SECRET
+const JWT_EMAIL_SECRET = process.env.EMAIL_SECRET
 const db = require('../models');
 const User = db.User
 const sendMail = require('../services/sendMail')
 const path = require('path');
 const { validationResult, check } = require("express-validator");
 const ejs = require('ejs')
+const aws = require('../services/aws')
 
 
 const userControllers = {
@@ -52,7 +54,9 @@ const userControllers = {
             firstName: firstName,
             lastName:lastName,
             email: email,
-            password: passHash
+            password: passHash,
+            image:"https://alkemyong.s3.amazonaws.com/default-user.png",
+            isConfirmed: false
         })
         .then((newUser)=>{
             ejs.renderFile(path.resolve(__dirname, '../views/welcomeNewUser.ejs'), {newUser}, (err, welcomeHTML) => {
@@ -97,13 +101,13 @@ const userControllers = {
     //verifying through the user's email if 
     //the rolesId is administrator to show the list of all users.
     listAllUsers: async (req, res) => {
-        const { email } = req.query;   
+        /* const { email } = req.query;   
         const rolAdmin= 1; 
         const validAdmUser = await db.User.findOne({ where: { email: email, roleId:rolAdmin } });
         
         if (validAdmUser == null) {
         return res.status(500).json("Esta solicitud solo puede ser hecha por un Usuario Administrador");
-        }  
+        }   */
         const user = await db.User.findAll();
         return res.json(user);  
     },
@@ -117,40 +121,61 @@ const userControllers = {
     },
     update: async(req, res) => {
         let id = req.params.id;
-        const {firstName, lastName, email, image} = req.body
+        let imageUrl;
+        let image;
+        const {firstName, lastName, email, password, newPassword} = req.body;
+
+        if (req.files?.image) {
+            image = req.files.image
+            const imageValidation = /^$|\.(jpg|jpeg|png|webp|avif|gif|svg)$/.test(image.name)
+            if(!imageValidation) {
+                return res.status(400).json({errors: 'Imagen invalida'})
+            }
+            imageUrl = await aws.uploadFile(image.name, image.data)
+        }
+
         const oldData = await User.findOne({where: {id}})
 
+        if(!firstName && !lastName && !email && !image && !password && !newPassword) {
+            return res.status(404).json({errors: 'No se envio datos'})
+        }
+
+
         if(oldData === null) {
-            return res.status(404).json({errors: 'Not found'})
+            return res.status(404).json({errors: 'ID no encontrada'})
         }
 
         if(firstName) {
             const nameValidation = /^$|^[A-Za-z\s]+$/.test(firstName)
             if(!nameValidation) {
-                return res.status(400).json({errors: 'Invalid name'})
+                return res.status(400).json({errors: 'Nombre invalido'})
             }
         }
 
         if(lastName) {
             const nameValidation = /^$|^[A-Za-z\s]+$/.test(lastName)
             if(!nameValidation) {
-                return res.status(400).json({errors: 'Invalid surname'})
+                return res.status(400).json({errors: 'Apellido invalido'})
             }
         }
 
         if(image){
-            const imageValidation = /^$|\.(jpg|jpeg|png|webp|avif|gif|svg)$/.test(image)
-            if(!imageValidation) {
-                return res.status(400).json({errors: 'Invalid image'})
-            }
+
+            
         }
+        
+        if(password && newPassword) {
+
+        }
+
+        
 
         let updatedUser = {
             id,
             firstName: firstName ? firstName : oldData.dataValues.firstName,
             lastName: lastName ? lastName : oldData.dataValues.lastName,
             email: email ? email : oldData.dataValues.email,
-            image: image ? image : oldData.dataValues.image,
+            image: image ? imageUrl : oldData.dataValues.image,
             roleId: oldData.dataValues.roleId,
             createdAt: oldData.dataValues.createdAt,
             updatedAt: new Date(),
@@ -159,8 +184,68 @@ const userControllers = {
         let token = signToken(updatedUser)
         
         User.update(updatedUser,{where:{id}})
-            .then(data => res.status(200).json(token))
-            .catch(error => res.status(503).json(error))
+            .then(data => res.status(200).json({token, user: updatedUser}))
+            .catch(error => res.status(503).json({errors: 'Base de datos no disponible'}))
+    },
+    changeRoleId: async (req, res) => {
+        const { id } = req.params
+        try {
+            const userInfo = await User.findByPk(id);
+            if (!userInfo) {
+                return res.status(404).send('Usuario no encontrado')
+            }
+            await User.update({
+                roleId: userInfo.roleId === 1 ? 2 : 1 
+            }, { where: { id } })
+            const updatedUser = await User.findByPk(id);
+            return res.status(200).send(updatedUser)
+        } catch (error) {
+            res.status(400).send(error)
+        }
+    },
+    sendEmailConfirmation: async (req, res) => {
+        const userData = req.userData
+        console.log(userData.id)
+        const user = await User.findByPk(userData.id)
+        if(!user) {
+            return res.status(404).json({errors: 'Usuario no encontrado'})
+        }
+        const token = signEmailToken(user)
+        
+        const url = `${process.env.BASE_PATH_CLIENT}/confirmacion/${token}`
+        try {
+           await sendMail(
+                    userData.email,
+                    'Confirma tu contraseña',
+                    null, 
+                    `Haz click aqui para confirmar tu email: <a href=${url}>${url}</a>`
+            )
+            return res.sendStatus(200)
+        } catch (error) {
+            return res.status(500).json({errors: 'Error de servidor'})
+        }
+    },
+    emailConfirmation: (req, res) => {
+            const userData = req.userData
+            User.update({ isConfirmed: 1}, { where: {id: userData.id}})
+                .then(data => {
+                    const user = {
+                        id: userData.id,
+                        firstName: userData.firstName,
+                        lastName: userData.lastName,
+                        email: userData.email,
+                        image: userData.image,
+                        roleId: userData.roleId,
+                        deletedAt: userData.deletedAt,
+                        createdAt: userData.createdAt,
+                        updatedAt: userData.updatedAt,
+                        isConfirmed: 1
+                    }
+                    let token = signToken(user)
+                    res.status(200).json(token)
+                    
+                })
+                    .catch(error => res.status(500).json({errors: 'Error de servidor'}))
     }
 };
 
@@ -168,6 +253,14 @@ function signToken(payload){
     let token = jwt.sign({ payload }, JWT_SECRET, {
 		algorithm: "HS256",
 		expiresIn: '6h',
+	})
+    return token
+}
+
+function signEmailToken(payload){
+    let token = jwt.sign({ payload }, JWT_EMAIL_SECRET, {
+		algorithm: "HS256",
+		expiresIn: '1d',
 	})
     return token
 }

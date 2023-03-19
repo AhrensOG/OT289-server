@@ -1,5 +1,6 @@
 const db = require("../models");
 const { validationResult } = require("express-validator");
+const aws = require('../services/aws')
 
 const activitiesControllers = {
   add: async (req, res) => {
@@ -8,12 +9,17 @@ const activitiesControllers = {
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
+    
     //Else save in db
-    const { name,image, content } = req.body;
+    const { name, content } = req.body;
+    const { image } = req.files
+
+    //First, upload image to S3
+		const imageUrl = await aws.uploadFile(image.name, image.data)
 
     const entryObj = {
       name,
-      image,
+      image: imageUrl,
       content,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -25,13 +31,21 @@ const activitiesControllers = {
 //update activities
   upActivities : async (req, res) => {
     const { id } = req.params; 
-    const { name, image, content } = req.body;
-    const activities = {} 
+    const { name, content } = req.body;
 
-        activities.id = id
-        activities.name = name;
-        activities.image = image;
-        activities.content = content;
+    const activities = {
+      name,
+      content
+    }
+
+    if (req.files?.image) {
+      const { image } = req.files
+      
+      //upload new image to S3
+		  const imageUrl = await aws.uploadFile(image.name, image.data)
+
+      activities.image = imageUrl
+    }
 
         await db.Activities.update(activities, {where: { id: id}})
         .then((response) => { 
@@ -60,6 +74,20 @@ const activitiesControllers = {
       return res.status(200).json(data)
    })    
       .catch(error => res.send(error))
+  },
+  destroy: async (req, res) => {
+    const { id } = req.params
+    try {
+        const deleted = await db.Activities.destroy({ where: { id } })
+
+        if (deleted) {
+            res.status(200).json({success: 'Actividad eliminada'})
+        } else {
+            res.status(404).json({ error: 'Actividad inexistente' })
+        }
+    } catch (error) {
+        res.status(503).json(error)
+    }
   }
 };
 

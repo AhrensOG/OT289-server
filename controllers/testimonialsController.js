@@ -1,7 +1,17 @@
 const db = require('../models');
 const { validationResult } = require("express-validator");
+const aws = require('../services/aws')
+
 
 const testimonialsController = {
+    getTestimonials: async (req, res) => {
+        try {
+            const testimonials = await db.Testimonials.findAll()
+            res.status(200).send(testimonials)
+        } catch (error) {
+            res.status(400).send(error)
+        }
+    },
     putTestimonials: (req, res) => {
         const errors = validationResult(req)
         if (!errors.isEmpty()) {
@@ -33,16 +43,20 @@ const testimonialsController = {
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.mapped() });
         } else {
-            db.Testimonials.create({
-                name: req.body.name,
-                content: req.body.content
+            aws.uploadFile(req.files.image.name, req.files.image.data)
+            .then((imageURL) => {
+                return db.Testimonials.create({
+                    name: req.body.name,
+                    image:imageURL,
+                    content: req.body.content
+                })
             })
-                .then((testimony) => {
-                    return res.status(200).send(testimony)
-                })
-                .catch(error => {
-                    console.error(error)
-                })
+            .then((testimony) => {
+                return res.status(200).send(testimony)
+            })
+            .catch(error => {
+                console.error(error)
+            })
         }
     },
     deleteTestimonials: (req, res) => {
