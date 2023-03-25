@@ -14,11 +14,11 @@ module.exports = (sequelize, DataTypes) => {
     }
   };
   Entries.init({
-    name: DataTypes.STRING,
-    content: DataTypes.STRING,
-    image: DataTypes.STRING,
+    name: DataTypes.TEXT,
+    content: DataTypes.TEXT,
+    image: DataTypes.TEXT,
     categoryId: DataTypes.INTEGER,
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     deletedAt: DataTypes.DATE
   }, {
     sequelize,

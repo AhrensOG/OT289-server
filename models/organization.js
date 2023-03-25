@@ -14,11 +14,11 @@ module.exports = (sequelize, DataTypes) => {
     }
   };
   Organization.init({
-    name: DataTypes.STRING,
-    image: DataTypes.STRING,
-    phone: DataTypes.INTEGER, //Actualizar por STRING
-    adress: DataTypes.STRING,
-    welcomeText: DataTypes.STRING,
+    name: DataTypes.TEXT,
+    image: DataTypes.TEXT,
+    phone: DataTypes.STRING, //Actualizar por STRING
+    address: DataTypes.TEXT,
+    welcomeText: DataTypes.TEXT,
     socialLinks: DataTypes.JSON
   }, {
     sequelize,
