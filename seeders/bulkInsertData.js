@@ -8,6 +8,7 @@ const usersArray = [
     email: 'admin@test.com',
     password: bcrypt.hashSync('12345678', 10),
     image: 'https://www.designevo.com/res/templates/thumb_small/colorful-hand-and-warm-community.png',
+    isConfirmed: 1,
     createdAt: new Date,
     updatedAt: new Date
   },
@@ -17,6 +18,7 @@ const usersArray = [
     email: 'usuario@test.com',
     password: bcrypt.hashSync('12345678', 10),
     image: 'https://www.designevo.com/res/templates/thumb_small/colorful-hand-and-warm-community.png',
+    isConfirmed: 1,
     createdAt: new Date,
     updatedAt: new Date
   }
@@ -248,13 +250,25 @@ const organization = [
 
 module.exports = {
   upDB: async () => {
-    await db.User.bulkCreate(usersArray)
-    await db.Role.bulkCreate(roles)
-    await db.Categories.bulkCreate(categories)
-    await db.Entries.bulkCreate(entries)
-    await db.Activities.bulkCreate(activities)
-    await db.Testimonials.bulkCreate(testimonials)
-    await db.Members.bulkCreate(members)
-    await db.Organization.bulkCreate(organization)
+    const user = await db.User.findAll()
+    if(!user.length){
+      await db.User.bulkCreate(usersArray)
+      await db.Role.bulkCreate(roles)
+      await db.Categories.bulkCreate(categories)
+      await db.Entries.bulkCreate(entries)
+      await db.Activities.bulkCreate(activities)
+      await db.Testimonials.bulkCreate(testimonials)
+      await db.Members.bulkCreate(members)
+      await db.Organization.bulkCreate(organization)
+
+      const adminRole = await db.Role.findOne({ where: { name: 'Admin' } })
+      const standardRole = await db.Role.findOne({ where: { name: 'Standard' } })
+
+      const adminUser = await db.User.findOne({ where: { firstName: 'Admin' } })
+      const usuarioUser = await db.User.findOne({ where: { firstName: 'Usuario' } })
+
+      await adminUser.setRole(adminRole)
+      await usuarioUser.setRole(standardRole)
+    }
   }
 }
